@@ -39,7 +39,7 @@ cloudinary.config({
 
 const upload = multer({ dest: "/uploads" });
 const corsOptions = {
-  origin: ["http://localhost:3000", "http://localhost:3001"],
+  origin: ["https://zipbuy.vercel.app/","http://localhost:3000", "http://localhost:3001"],
   credentials: true,
 };
 
