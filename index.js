@@ -166,9 +166,10 @@ router.get("/", (req, res) => {
   res.send("now app was running");
 });
 
+/*
 app.listen(port, () => {
   console.log(`app was running on http://localhost:${port}`);
 });
-
+*/
 
 module.exports = app;
