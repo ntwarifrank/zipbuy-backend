@@ -27,7 +27,7 @@ import {
 import profileData from "./utils/verifyToken.js";
 
 const app = express();
-const port = 5000;
+const port = process.env.PORT || 5000;
 const router = express.Router();
 dotenv.config();
 
