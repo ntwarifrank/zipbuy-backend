@@ -42,12 +42,20 @@ const upload = multer({ storage });
 
 //const upload = multer({ dest: "/uploads" });
 const corsOptions = {
-  origin: ["https://zipbuy.vercel.app/","https://zipbuy-admin.vercel.app/" ,"http://localhost:3000", "http://localhost:3001"],
+  origin: [
+    "https://zipbuy-admin.vercel.app",
+    "https://zipbuy.vercel.app",
+    "http://localhost:3000", 
+    "http://localhost:3001"
+  ],
   credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
 };
 
-app.use(cookieParser());
 app.use(cors(corsOptions));
+
+app.use(cookieParser());
 app.use(express.json());
 app.use(router);
 
