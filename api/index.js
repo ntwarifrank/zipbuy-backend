@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import multer from "multer";
-import productSchema from "./productSchema.js";
+import productSchema from "../productSchema.js";
 import { v2 as cloudinary } from "cloudinary";
 import cookieParser from "cookie-parser";
 import {
@@ -13,7 +13,7 @@ import {
   adminLogin,
   AdminRegister,
   getUserData
-} from "./userController/usercontroller.js";
+} from "../userController/usercontroller.js";
 import {
   searchedProduct,
   allProduct,
@@ -23,8 +23,8 @@ import {
   specificProduct,
   placeOrder,
   paymentIndent,
-} from "./productController/productController.js";
-import profileData from "./utils/verifyToken.js";
+} from "../productController/productController.js";
+import profileData from "../utils/verifyToken.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
