@@ -163,4 +163,5 @@ app.get("/", (req, res) => {
   res.send("Hello from Express on Vercel!");
 });
 
-module.exports = app;
+export default app;
+
