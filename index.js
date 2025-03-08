@@ -174,5 +174,7 @@ app.get("/", (req, res) => {
   res.send("Hello from Express on Vercel!");
 });
 
+app.listen(port, ()=>{})
+
 export default app;
 

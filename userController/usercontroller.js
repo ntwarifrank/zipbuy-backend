@@ -110,12 +110,12 @@ export const register = async(req, res) => {
 
 // login of registered user
 export const login = async (req, res) => {
-  let errorMessage = [];
+  
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      errorMessage.push("Please All Fields Are Required");
+      return res.status(401).json({ sucess: true, message:"Please All Fields Are Required"});
     }
 
     if (email) {
@@ -130,18 +130,15 @@ export const login = async (req, res) => {
           }
           
         } else {
-          errorMessage.push("Invalid Password");
+          return res.status(401).json({ sucess: false, message:"Invalid Password"});
         }
       } else {
-        errorMessage.push("That User Not Exists");
+        return res.status(401).json({ sucess: false, message:"That User Not Exists"});
       }
     }
 
-    if (errorMessage.length > 0) {
-      res.status(401).json({ errorMessage });
-    }
   } catch (error) {
-    res.status(400).json({ error });
+    return res.status(400).json({ sucess: false, message: "server error" });
   }
 };
 
