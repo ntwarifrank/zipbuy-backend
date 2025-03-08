@@ -37,7 +37,10 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const upload = multer({ dest: "/uploads" });
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+//const upload = multer({ dest: "/uploads" });
 const corsOptions = {
   origin: ["https://zipbuy.vercel.app/","https://zipbuy-admin.vercel.app/" ,"http://localhost:3000", "http://localhost:3001"],
   credentials: true,
