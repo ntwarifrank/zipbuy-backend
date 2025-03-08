@@ -159,17 +159,8 @@ router.post("/logout", (req, res) => {
   }
 });
 
-
-
-
-router.get("/", (req, res) => {
-  res.send("now app was running");
+app.get("/", (req, res) => {
+  res.send("Hello from Express on Vercel!");
 });
-
-/*
-app.listen(port, () => {
-  console.log(`app was running on http://localhost:${port}`);
-});
-*/
 
 module.exports = app;
