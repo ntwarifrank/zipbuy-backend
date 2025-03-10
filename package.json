@@ -12,7 +12,8 @@
   "type": "module",
   "license": "ISC",
   "dependencies": {
-    "@vercel/node": "^5.1.12",
+    "@vercel/node": "^2.3.0",
+    "are-we-there-yet": "^4.0.2",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.5.1",
@@ -21,6 +22,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "fs": "^0.0.1-security",
+    "gauge": "^5.0.2",
     "glob": "^11.0.1",
     "har-validator": "^5.1.5",
     "jsonwebtoken": "^9.0.2",
