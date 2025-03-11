@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken"
 
 dotenv.config();
 const secret_key = process.env.SECRET_KEY 
+const secret_key_2 = process.env.SECRET_KEY_2
 
 export const AdminRegister = async(req, res) => {
       const errorMessage = [];
@@ -45,25 +46,28 @@ export const adminLogin = async(req, res) => {
         return res.status(401).json({ success: false, message:"All Field Are Required"});
        }
 
-      if(password !== confirmPassword){
-        return res.status(400).json({success: false, message: "Password Doesn't Match"});
-      }
        const adminLogin = await AdminSchema.findOne({ email });
        if (!adminLogin) {
-         return res.status(401).json({ success: false, message: "You Are Not Admin" });
+         return res.status(404).json({ success: false, message: "You Are Not Admin" });
        }
+       if(password !== confirmPassword){
+        return res.status(401).json({success: false, message: "Password Doesn't Match"});
+      }
        const isMatch = await bcrypt.compare(password, adminLogin.password);
 
         if (!isMatch) {
           return res.status(401).json({ success: false, message: "Invalid Password" });
         }
         if(isMatch){
-         res.status(201).json({ sucess: true, message: "Admin Login Successfull" });
+           res.status(201).json({sucess:true, message: "Login successful"});
    
         }
-         } catch (error) {
-      res.status(401).json({sucess: false, message:"samething went wrong"});
-    }
+         }
+          catch (error) {
+          console.error("Login Error:", error.message);
+          return res.status(500).json({ success: false, message: "Something went wrong" });
+        }
+        
 }
 
 //register of new user
@@ -125,7 +129,12 @@ export const login = async (req, res) => {
         if (checkPassword) {
           if (checkPassword) {
             const token = jwt.sign({ user }, secret_key, { expiresIn: "1d" });
-            res.cookie("token", token, { httpOnly: true, secure: false });
+            res.cookie("token", token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === "production", // True on Vercel, False on Local
+              sameSite: "lax",
+              path: "/",
+            });
             return res.status(200).json({ message: "Login successful", token });
           }
           
