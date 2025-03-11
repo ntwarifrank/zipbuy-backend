@@ -128,14 +128,13 @@ export const login = async (req, res) => {
         const checkPassword = await bcrypt.compare(password, user.password);
         if (checkPassword) {
           if (checkPassword) {
-          /*  const token = jwt.sign({ user }, secret_key, { expiresIn: "1d" });
+          const token = jwt.sign({ user }, secret_key, { expiresIn: "1d" });
             res.cookie("token", token, {
               httpOnly: true,
               secure: process.env.NODE_ENV === "production", // True on Vercel, False on Local
               sameSite: "lax",
               path: "/",
             });
-            */
             return res.status(200).json({ message: "Login successful", token });
           }
           
@@ -146,7 +145,6 @@ export const login = async (req, res) => {
         return res.status(401).json({ sucess: false, message:"That User Not Exists"});
       }
     }
-
   } catch (error) {
     return res.status(400).json({ sucess: false, message: "server error" });
   }
