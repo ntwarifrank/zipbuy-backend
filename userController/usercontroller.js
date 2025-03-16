@@ -129,12 +129,14 @@ export const login = async (req, res) => {
         if (checkPassword) {
           if (checkPassword) {
           const token = jwt.sign({ user }, secret_key, { expiresIn: "1d" });
-            res.cookie("token", token, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === "production", // True on Vercel, False on Local
-              sameSite: "lax",
-              path: "/",
-            });
+          res.cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production", // Ensure it's secure in production (HTTPS)
+            sameSite: process.env.NODE_ENV === "production" ? "None" : "Strict", // SameSite=None for cross-site requests
+            path: "/",
+            maxAge: 24 * 60 * 60 * 1000,
+          });
+          
             return res.status(200).json({ message: "Login successful", token });
           }
           
