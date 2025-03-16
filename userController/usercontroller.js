@@ -189,7 +189,7 @@ export const verifyEmail = async(req, res) => {
 
 export const getUserData = (req , res) => {
   const user = req.user
-  res.json({user});
+  return res.json({user});
 }
 
 

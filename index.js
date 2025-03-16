@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import multer from "multer";
 import productSchema from "./productSchema.js";
 import { v2 as cloudinary } from "cloudinary";
+import stream from "stream";
 import cookieParser from "cookie-parser";
 import {
   register,
@@ -37,7 +38,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const storage = multer.memoryStorage();
+const storage = multer.memoryStorage(); 
 const upload = multer({ storage });
 
 //const upload = multer({ dest: "/uploads" });
@@ -59,18 +60,9 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(router);
 
-mongoose
-  .connect(process.env.MONGO_DB_URL, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-  })
-  .then(() => {
-    console.log("database connected successfull");
-  })
-  .catch((error) => {
-    console.log("database failed to connect", error);
-  });
+mongoose.connect(process.env.MONGO_DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log("Database connected"))
+  .catch((error) => console.log("Database connection failed:", error));
   
 
 router.post("/register", register);
@@ -80,51 +72,50 @@ router.post("/adminlogin", adminLogin);
 router.post("/adminregister", AdminRegister);
 router.post("/createproduct", upload.array("images", 50), async (req, res) => {
   try {
-    const {
-      productName,
-      productPrice,
-      productQuantity,
-      productCategory,
-      productDiscount,
-      productDescription,
-      productShipping,
-    } = req.body;
+    const { productName, productPrice, productQuantity, productCategory, productDiscount, productDescription, productShipping } = req.body;
 
-    if (
-      !productName ||
-      !productPrice ||
-      !productQuantity ||
-      !productCategory ||
-      !productDiscount ||
-      !productDescription ||
-      !productShipping
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "All fields are required",
-      });
+    // Ensure all required fields are provided
+    if (!productName || !productPrice || !productQuantity || !productCategory || !productDiscount || !productDescription || !productShipping) {
+      return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
+    // Ensure at least one image is uploaded
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "No images were uploaded",
-      });
+      return res.status(400).json({ success: false, message: "No images were uploaded" });
     }
 
     const uploadedImageUrls = [];
+
+    // Upload each image to Cloudinary
     for (const file of req.files) {
-      const result = await cloudinary.uploader.upload(file.path, {
-        folder: "uploads",
+      const uploadResult = await new Promise((resolve, reject) => {
+        const bufferStream = new stream.PassThrough();
+        bufferStream.end(file.buffer);
+
+        // Upload the image to Cloudinary
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { folder: "uploads" },
+          (error, result) => {
+            if (error) {
+              reject(error); // Reject if there's an error
+            } else {
+              resolve(result); // Resolve if upload is successful
+            }
+          }
+        );
+
+        // Pipe the file buffer to Cloudinary upload stream
+        bufferStream.pipe(uploadStream);
       });
-      uploadedImageUrls.push(result.secure_url);
+
+      // Push the secure URL of the uploaded image
+      uploadedImageUrls.push(uploadResult.secure_url);
     }
 
-    const shippingDetails =
-      typeof productShipping === "string"
-        ? JSON.parse(productShipping)
-        : productShipping;
+    // Parse shipping details (if stringified)
+    const shippingDetails = typeof productShipping === "string" ? JSON.parse(productShipping) : productShipping;
 
+    // Create a new product in the database
     const createdProduct = await productSchema.create({
       productName,
       productPrice,
@@ -136,21 +127,13 @@ router.post("/createproduct", upload.array("images", 50), async (req, res) => {
       productShipping: shippingDetails,
     });
 
-    if(createdProduct){
-      return res.status(200).json({
-        success: true,
-        message: "Product created successfully",
-        data: createdProduct,
-      });
-    }
+    return res.status(200).json({ success: true, message: "Product created successfully", data: createdProduct });
   } catch (error) {
     console.error("Error creating product:", error);
-    res.status(500).json({
-      success: false,
-      message: "samething went wrong",
-    });
+    res.status(500).json({ success: false, message: "Something went wrong" });
   }
 });
+
 
 router.get("/allproducts", allProduct);
 router.get("/product/:id", Product);
@@ -178,4 +161,15 @@ app.listen(port, () => console.log(`Server running on port http://localhost:${po
 
 
 export default app;
+
+
+
+
+
+
+
+
+
+
+
 
