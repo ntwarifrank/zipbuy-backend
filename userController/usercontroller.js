@@ -131,7 +131,7 @@ export const login = async (req, res) => {
           const token = jwt.sign({ user }, secret_key, { expiresIn: "1d" });
           res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production", // Ensure it's secure in production (HTTPS)
+            secure: true, // Ensure it's secure in production (HTTPS)
             sameSite: process.env.NODE_ENV === "production" ? "None" : "Strict", // SameSite=None for cross-site requests
             path: "/",
             maxAge: 24 * 60 * 60 * 1000,
