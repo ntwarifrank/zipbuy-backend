@@ -176,18 +176,24 @@ export const placeOrder = async (req, res) => {
 
 //that is route for searching specific product
 export const searchedProduct = async (req, res) => {
-  const { searched } = req.body;
+  const { search } = req.body;
 
   try {
-    if (!searched) {
+    if (!search ) {
       return res
         .status(400)
         .json({ success: false, message: "Search query is required" });
     }
 
-    const searchedProducts = await productSchema.find({
-      productName: { $regex: searched, $options: "i" },
-    });
+    let searchedProducts = await productSchema.find({
+      productName: { $regex: search, $options: "i" },
+    })
+
+    if(searchedProducts.length == 0){
+      searchedProducts =  await productSchema.find({
+        productCategory: { $regex: search, $options: "i" },
+      });
+    }
 
     if (searchedProducts.length > 0) {
       return res
@@ -237,4 +243,20 @@ export const paymentIndent = async (req, res) => {
     console.error(error);
     res.status(500).send({ error: error.message });
   }
+};
+
+//that is for related product
+export const relatedProduct = async(req, res) => {
+  const {category}  = req.body;
+
+  const relatedProduct = await productSchema.find({
+    productCategory: category,
+  });
+
+  if(!relatedProduct){
+    res.status(400).json({ success: false, message:"No Related Product"});
+    return;
+  }
+
+  res.status(200).json({products: relatedProduct});
 };

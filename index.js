@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import multer from "multer";
 import productSchema from "./productSchema.js";
 import { v2 as cloudinary } from "cloudinary";
+import axios from "axios";
+import FormData from "form-data";
 import stream from "stream";
 import cookieParser from "cookie-parser";
 import {
@@ -24,6 +26,7 @@ import {
   specificProduct,
   placeOrder,
   paymentIndent,
+  relatedProduct,
 } from "./productController/productController.js";
 import profileData from "./utils/verifyToken.js";
 
@@ -37,6 +40,34 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+const removeBackground = async (fileBuffer) => {
+  const formData = new FormData();
+  formData.append("size", "auto");
+
+  const fileStream = new stream.PassThrough();
+  fileStream.end(fileBuffer);
+
+  formData.append("image_file", fileStream, { filename: "image.png" });
+
+  try {
+    const response = await axios.post("https://api.remove.bg/v1.0/removebg", formData, {
+      headers: {
+        "X-Api-Key": process.env.REMOVE_BG_API_KEY,
+        ...formData.getHeaders(),
+      },
+      responseType: "arraybuffer",
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error("Remove.bg API error:", error.response?.data || error.message);
+    throw new Error("Failed to remove background");
+  }
+};
+
+
+
 
 const storage = multer.memoryStorage(); 
 const upload = multer({ storage });
@@ -60,7 +91,7 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(router);
 
-mongoose.connect(process.env.MONGO_DB_URL, { useNewUrlParser: true, useUnifiedTopology: true })
+mongoose.connect(process.env.MONGO_DB_URL)
   .then(() => console.log("Database connected"))
   .catch((error) => console.log("Database connection failed:", error));
   
@@ -74,27 +105,26 @@ router.post("/createproduct", upload.array("images", 50), async (req, res) => {
   try {
     const { productName, productPrice, productQuantity, productCategory, productDiscount, productDescription, productShipping } = req.body;
 
-    // Ensure all required fields are provided
     if (!productName || !productPrice || !productQuantity || !productCategory || !productDiscount || !productDescription || !productShipping) {
       return res.status(400).json({ success: false, message: "All fields are required" });
     }
 
-    // Ensure at least one image is uploaded
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ success: false, message: "No images were uploaded" });
     }
 
     const uploadedImageUrls = [];
 
-    // Upload each image to Cloudinary
+    // that is for upload images to cloudinary
     for (const file of req.files) {
+      const imageBuffer = await removeBackground(file.buffer);
       const uploadResult = await new Promise((resolve, reject) => {
         const bufferStream = new stream.PassThrough();
-        bufferStream.end(file.buffer);
+        bufferStream.end(imageBuffer);
 
-        // Upload the image to Cloudinary
+        // that is for Upload the single image to Cloudinary
         const uploadStream = cloudinary.uploader.upload_stream(
-          { folder: "uploads" },
+          { folder: "uploads"},
           (error, result) => {
             if (error) {
               reject(error); // Reject if there's an error
@@ -112,7 +142,6 @@ router.post("/createproduct", upload.array("images", 50), async (req, res) => {
       uploadedImageUrls.push(uploadResult.secure_url);
     }
 
-    // Parse shipping details (if stringified)
     const shippingDetails = typeof productShipping === "string" ? JSON.parse(productShipping) : productShipping;
 
     // Create a new product in the database
@@ -144,6 +173,7 @@ router.post("/placeorder", placeOrder);
 router.post("/payment-intent", paymentIndent);
 router.get("/profile", profileData, getUserData);
 router.post("/search", searchedProduct);
+router.post("/related", relatedProduct);
 router.post("/logout", (req, res) => {
   try {
     res.clearCookie("token", { httpOnly: true, secure: false });
