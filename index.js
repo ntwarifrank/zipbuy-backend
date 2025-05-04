@@ -55,7 +55,8 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    // Allow all origins in development, specific ones in production
+    if (process.env.NODE_ENV === 'development' || !origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
@@ -63,19 +64,8 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type", 
-    "Authorization", 
-    "X-Requested-With",
-    "Accept",
-    "Origin",
-    "Access-Control-Request-Method",
-    "Access-Control-Request-Headers"
-  ],
-  exposedHeaders: [
-    "Access-Control-Allow-Origin",
-    "Access-Control-Allow-Credentials"
-  ],
+  allowedHeaders: ["*"], // Temporarily allow all headers
+  exposedHeaders: ["*"], // Temporarily expose all headers
   optionsSuccessStatus: 200
 };
 
