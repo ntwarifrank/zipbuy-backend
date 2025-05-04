@@ -29,7 +29,6 @@ import {
   relatedProduct,
 } from "./productController/productController.js";
 
-// Initialize app and configuration
 const app = express();
 const port = process.env.PORT || 5000;
 const router = express.Router();
@@ -38,110 +37,12 @@ dotenv.config();
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Cloudinary configuration
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Enhanced CORS Configuration
-const allowedOrigins = [
-  "https://zipbuy-admin.vercel.app",
-  "https://zipbuy.vercel.app",
-  "http://localhost:3000", 
-  "http://localhost:3001"
-];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Allow all origins in development, specific ones in production
-    if (process.env.NODE_ENV === 'development' || !origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["*"], // Temporarily allow all headers
-  exposedHeaders: ["*"], // Temporarily expose all headers
-  optionsSuccessStatus: 200
-};
-
-// Apply middleware in correct order
-app.set('trust proxy', 1); // Important for Vercel deployments
-
-// Stripe webhook needs raw body first
-app.post("/stripe-webhook", express.raw({type: 'application/json'}), async (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  // Handle different event types
-  switch (event.type) {
-    case 'payment_intent.succeeded':
-      const paymentIntent = event.data.object;
-      console.log(`PaymentIntent for ${paymentIntent.amount} was successful!`);
-      break;
-    case 'payment_intent.payment_failed':
-      const failedIntent = event.data.object;
-      console.error('Payment failed:', failedIntent.last_payment_error?.message);
-      break;
-    default:
-      console.log(`Unhandled event type ${event.type}`);
-  }
-
-  res.json({ received: true });
-});
-
-// Now apply other middleware
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Enable preflight for all routes
-app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Additional security headers middleware
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-  }
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-  );
-  res.header("Vary", "Origin"); // Important for proper caching of CORS responses
-  next();
-});
-
-// Database connection
-mongoose.connect(process.env.MONGO_DB_URL)
-  .then(() => console.log("Database connected"))
-  .catch((error) => console.log("Database connection failed:", error));
-
-// Validate essential environment variables
-if (!process.env.JWT_SECRET) {
-  throw new Error('FATAL: JWT_SECRET is not configured');
-}
-
-// File upload configuration
-const storage = multer.memoryStorage(); 
-const upload = multer({ storage });
-
-// Background removal utility
 const removeBackground = async (fileBuffer) => {
   const formData = new FormData();
   formData.append("size", "auto");
@@ -167,22 +68,56 @@ const removeBackground = async (fileBuffer) => {
   }
 };
 
-// Routes
+const storage = multer.memoryStorage(); 
+const upload = multer({ storage });
+
+const corsOptions = {
+  origin: [
+    "https://zipbuy-admin.vercel.app",
+    "https://zipbuy.vercel.app",
+    "http://localhost:3000", 
+    "http://localhost:3001"
+  ],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+};
+
+app.use(cors(corsOptions));
+app.use(cookieParser());
+app.use(express.json());
+app.use(router);
+
+mongoose.connect(process.env.MONGO_DB_URL)
+  .then(() => console.log("Database connected"))
+  .catch((error) => console.log("Database connection failed:", error));
+
+  if (!process.env.JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET is not configured');
+  }
+
+
+// Payment Intent Endpoints
 router.post("/payment-intent", async (req, res) => {
   try {
     const { amount, currency } = req.body;
     
+    // Validate input
     if (!amount || isNaN(amount)) {
       return res.status(400).json({ error: 'Valid amount is required' });
     }
     
-    const minAmount = 50;
+    // Ensure minimum amount (Stripe requires at least $0.50 USD equivalent)
+    const minAmount = 50; // $0.50 in cents
     const finalAmount = Math.max(Number(amount), minAmount);
-    const validCurrencies = ['usd', 'eur', 'gbp'];
+    
+    // Validate currency
+    const validCurrencies = ['usd', 'eur', 'gbp']; // Add more as needed
     const finalCurrency = validCurrencies.includes(currency?.toLowerCase()) 
       ? currency.toLowerCase() 
       : 'usd';
 
+    // Create payment intent
     const paymentIntent = await stripe.paymentIntents.create({
       amount: finalAmount,
       currency: finalCurrency,
@@ -202,6 +137,7 @@ router.post("/payment-intent", async (req, res) => {
       amount: paymentIntent.amount,
       currency: paymentIntent.currency
     });
+
   } catch (error) {
     console.error('Error creating payment intent:', error);
     res.status(500).json({ 
@@ -216,6 +152,7 @@ router.post("/update-payment-intent", async (req, res) => {
   try {
     const { paymentIntentId, amount } = req.body;
     
+    // Validate input
     if (!paymentIntentId) {
       return res.status(400).json({ error: 'Payment intent ID is required' });
     }
@@ -224,9 +161,11 @@ router.post("/update-payment-intent", async (req, res) => {
       return res.status(400).json({ error: 'Valid amount is required' });
     }
     
+    // Ensure minimum amount
     const minAmount = 50;
     const finalAmount = Math.max(Number(amount), minAmount);
 
+    // Update payment intent
     const paymentIntent = await stripe.paymentIntents.update(
       paymentIntentId,
       { 
@@ -244,8 +183,11 @@ router.post("/update-payment-intent", async (req, res) => {
       currency: paymentIntent.currency,
       status: paymentIntent.status
     });
+
   } catch (error) {
     console.error('Error updating payment intent:', error);
+    
+    // Handle specific Stripe errors
     let statusCode = 500;
     if (error.code === 'resource_missing') {
       statusCode = 404;
@@ -260,14 +202,49 @@ router.post("/update-payment-intent", async (req, res) => {
   }
 });
 
-// Authentication routes
+// Webhook handler for payment events
+router.post("/stripe-webhook", express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle different event types
+  switch (event.type) {
+    case 'payment_intent.succeeded':
+      const paymentIntent = event.data.object;
+      console.log(`PaymentIntent for ${paymentIntent.amount} was successful!`);
+      // Update your order status in database here
+      break;
+      
+    case 'payment_intent.payment_failed':
+      const failedIntent = event.data.object;
+      console.error('Payment failed:', failedIntent.last_payment_error?.message);
+      // Update order status and notify user
+      break;
+      
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.json({ received: true });
+});
+
+// Existing routes
 router.post("/register", register);
 router.post("/login", login);
 router.post("/verify-email", verifyEmail);
 router.post("/adminlogin", adminLogin);
 router.post("/adminregister", AdminRegister);
-
-// Product routes
 router.post("/createproduct", upload.array("images", 50), async (req, res) => {
   try {
     const { productName, productPrice, productQuantity, productCategory, productDiscount, productDescription, productShipping } = req.body;
@@ -334,38 +311,19 @@ router.post("/placeorder", placeOrder);
 router.get("/profile", getUserData);
 router.post("/search", searchedProduct);
 router.post("/related", relatedProduct);
-
-// Logout route with secure cookie clearance
 router.post("/logout", (req, res) => {
   try {
-    res.clearCookie("token", { 
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      domain: process.env.NODE_ENV === "production" ? ".vercel.app" : undefined
-    });
+    res.clearCookie("token", { httpOnly: true, secure: false });
     return res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
     return res.status(500).json({ message: "Error logging out", error });
   }
 });
 
-// Apply router
-app.use(router);
-
-// Health check endpoint
 app.get("/", (req, res) => {
-  res.status(200).json({ 
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development"
-  });
+  res.send("Hello from Express on Vercel!");
 });
 
-// Start server
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-  console.log(`Allowed origins: ${allowedOrigins.join(", ")}`);
-});
+app.listen(port, () => console.log(`Server running on port http://localhost:${port}`));
 
 export default app;
