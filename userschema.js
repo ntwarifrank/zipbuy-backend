@@ -1,7 +1,11 @@
 import mongoose, { mongo } from "mongoose";
 
 const userSchemaDesign = new mongoose.Schema({
-  username: {
+  firstName: {
+    type: String,
+    required: true,
+  },
+  lastName: {
     type: String,
     required: true,
   },
@@ -11,6 +15,22 @@ const userSchemaDesign = new mongoose.Schema({
     unique: true,
   },
   password: {
+    type: String,
+    required: true,
+  },
+  mobileNumber: {
+    type: Number,
+    required:true,
+  },
+  country: {
+      type: String,
+      required: true,
+  },
+  gender: {
+    type: String,
+    required: true,
+  },
+  city: {
     type: String,
     required: true,
   },

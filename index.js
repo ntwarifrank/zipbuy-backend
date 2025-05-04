@@ -9,13 +9,14 @@ import axios from "axios";
 import FormData from "form-data";
 import stream from "stream";
 import cookieParser from "cookie-parser";
+import Stripe from 'stripe';
 import {
   register,
   login,
   verifyEmail,
   adminLogin,
   AdminRegister,
-  getUserData
+  getUserData,
 } from "./userController/usercontroller.js";
 import {
   searchedProduct,
@@ -25,15 +26,16 @@ import {
   updateProduct,
   specificProduct,
   placeOrder,
-  paymentIndent,
   relatedProduct,
 } from "./productController/productController.js";
-import profileData from "./utils/verifyToken.js";
 
 const app = express();
 const port = process.env.PORT || 5000;
 const router = express.Router();
 dotenv.config();
+
+// Initialize Stripe
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -66,13 +68,8 @@ const removeBackground = async (fileBuffer) => {
   }
 };
 
-
-
-
 const storage = multer.memoryStorage(); 
 const upload = multer({ storage });
-
-//const upload = multer({ dest: "/uploads" });
 
 const corsOptions = {
   origin: [
@@ -94,8 +91,155 @@ app.use(router);
 mongoose.connect(process.env.MONGO_DB_URL)
   .then(() => console.log("Database connected"))
   .catch((error) => console.log("Database connection failed:", error));
-  
 
+  if (!process.env.JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET is not configured');
+  }
+
+
+// Payment Intent Endpoints
+router.post("/payment-intent", async (req, res) => {
+  try {
+    const { amount, currency } = req.body;
+    
+    // Validate input
+    if (!amount || isNaN(amount)) {
+      return res.status(400).json({ error: 'Valid amount is required' });
+    }
+    
+    // Ensure minimum amount (Stripe requires at least $0.50 USD equivalent)
+    const minAmount = 50; // $0.50 in cents
+    const finalAmount = Math.max(Number(amount), minAmount);
+    
+    // Validate currency
+    const validCurrencies = ['usd', 'eur', 'gbp']; // Add more as needed
+    const finalCurrency = validCurrencies.includes(currency?.toLowerCase()) 
+      ? currency.toLowerCase() 
+      : 'usd';
+
+    // Create payment intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: finalAmount,
+      currency: finalCurrency,
+      metadata: {
+        created_at: new Date().toISOString(),
+        integration_type: 'ecommerce_checkout'
+      },
+      automatic_payment_methods: {
+        enabled: true,
+      },
+    });
+
+    res.json({ 
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      amount: paymentIntent.amount,
+      currency: paymentIntent.currency
+    });
+
+  } catch (error) {
+    console.error('Error creating payment intent:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      code: error.code || 'payment_intent_error'
+    });
+  }
+});
+
+router.post("/update-payment-intent", async (req, res) => {
+  try {
+    const { paymentIntentId, amount } = req.body;
+    
+    // Validate input
+    if (!paymentIntentId) {
+      return res.status(400).json({ error: 'Payment intent ID is required' });
+    }
+    
+    if (!amount || isNaN(amount)) {
+      return res.status(400).json({ error: 'Valid amount is required' });
+    }
+    
+    // Ensure minimum amount
+    const minAmount = 50;
+    const finalAmount = Math.max(Number(amount), minAmount);
+
+    // Update payment intent
+    const paymentIntent = await stripe.paymentIntents.update(
+      paymentIntentId,
+      { 
+        amount: finalAmount,
+        metadata: {
+          updated_at: new Date().toISOString()
+        }
+      }
+    );
+
+    res.json({ 
+      success: true,
+      paymentIntentId: paymentIntent.id,
+      updatedAmount: paymentIntent.amount,
+      currency: paymentIntent.currency,
+      status: paymentIntent.status
+    });
+
+  } catch (error) {
+    console.error('Error updating payment intent:', error);
+    
+    // Handle specific Stripe errors
+    let statusCode = 500;
+    if (error.code === 'resource_missing') {
+      statusCode = 404;
+    }
+    
+    res.status(statusCode).json({ 
+      success: false,
+      error: error.message,
+      code: error.code || 'update_intent_error',
+      type: error.type || 'stripe_error'
+    });
+  }
+});
+
+// Webhook handler for payment events
+router.post("/stripe-webhook", express.raw({type: 'application/json'}), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err);
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
+
+  // Handle different event types
+  switch (event.type) {
+    case 'payment_intent.succeeded':
+      const paymentIntent = event.data.object;
+      console.log(`PaymentIntent for ${paymentIntent.amount} was successful!`);
+      // Update your order status in database here
+      break;
+      
+    case 'payment_intent.payment_failed':
+      const failedIntent = event.data.object;
+      console.error('Payment failed:', failedIntent.last_payment_error?.message);
+      // Update order status and notify user
+      break;
+      
+    default:
+      console.log(`Unhandled event type ${event.type}`);
+  }
+
+  res.json({ received: true });
+});
+
+// Existing routes
 router.post("/register", register);
 router.post("/login", login);
 router.post("/verify-email", verifyEmail);
@@ -115,36 +259,31 @@ router.post("/createproduct", upload.array("images", 50), async (req, res) => {
 
     const uploadedImageUrls = [];
 
-    // that is for upload images to cloudinary
     for (const file of req.files) {
       const imageBuffer = await removeBackground(file.buffer);
       const uploadResult = await new Promise((resolve, reject) => {
         const bufferStream = new stream.PassThrough();
         bufferStream.end(imageBuffer);
 
-        // that is for Upload the single image to Cloudinary
         const uploadStream = cloudinary.uploader.upload_stream(
           { folder: "uploads"},
           (error, result) => {
             if (error) {
-              reject(error); // Reject if there's an error
+              reject(error);
             } else {
-              resolve(result); // Resolve if upload is successful
+              resolve(result);
             }
           }
         );
 
-        // Pipe the file buffer to Cloudinary upload stream
         bufferStream.pipe(uploadStream);
       });
 
-      // Push the secure URL of the uploaded image
       uploadedImageUrls.push(uploadResult.secure_url);
     }
 
     const shippingDetails = typeof productShipping === "string" ? JSON.parse(productShipping) : productShipping;
 
-    // Create a new product in the database
     const createdProduct = await productSchema.create({
       productName,
       productPrice,
@@ -163,15 +302,13 @@ router.post("/createproduct", upload.array("images", 50), async (req, res) => {
   }
 });
 
-
 router.get("/allproducts", allProduct);
 router.get("/product/:id", Product);
 router.delete("/delete/:id", deleteProduct);
 router.put("/updateproduct/:id", updateProduct);
 router.post("/specificproduct", specificProduct);
 router.post("/placeorder", placeOrder);
-router.post("/payment-intent", paymentIndent);
-router.get("/profile", profileData, getUserData);
+router.get("/profile", getUserData);
 router.post("/search", searchedProduct);
 router.post("/related", relatedProduct);
 router.post("/logout", (req, res) => {
@@ -189,17 +326,4 @@ app.get("/", (req, res) => {
 
 app.listen(port, () => console.log(`Server running on port http://localhost:${port}`));
 
-
 export default app;
-
-
-
-
-
-
-
-
-
-
-
-

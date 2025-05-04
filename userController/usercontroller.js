@@ -73,8 +73,8 @@ export const adminLogin = async(req, res) => {
 //register of new user
 export const register = async(req, res) => {
     try{
-     const { username, email, password, confirmPassword } = req.body;
-     if(!username || !email || !password || !confirmPassword ){
+     const { firstName, lastName, email, password, confirmPassword, mobileNumber, country, gender, city } = req.body;
+     if(!firstName || !lastName || !email || !password || !confirmPassword || !mobileNumber || !country || !gender || !city ){
         return res.status(401).json({ sucess: false, message: "please All Fields Are Required "});
      }
      const userAlreadyExists = await userSchema.findOne({ email });
@@ -90,9 +90,14 @@ export const register = async(req, res) => {
          const hashedPassword = await bcrypt.hash(password, 10);
          const verificationToken = Math.floor(100000 + Math.random() * 900000).toString();
          const newUser = await userSchema.create({
-           username,
+           firstName,
+           lastName,
            email,
            password: hashedPassword,
+           mobileNumber,
+           country,
+           gender,
+           city,
            verificationToken,
            verificationTokenExpiresAt: Date.now() + 24 * 60 * 60 * 100 //24 hours
          });
@@ -114,41 +119,87 @@ export const register = async(req, res) => {
 
 // login of registered user
 export const login = async (req, res) => {
-  
   try {
     const { email, password } = req.body;
 
+    // Validate required fields
     if (!email || !password) {
-      return res.status(401).json({ sucess: true, message:"Please All Fields Are Required"});
+      return res.status(400).json({ 
+        error: "Email and password are required",
+        fieldErrors: {
+          email: !email ? "Email is required" : undefined,
+          password: !password ? "Password is required" : undefined
+        }
+      });
     }
 
-    if (email) {
-      const user = await userSchema.findOne({ email });
-      if (user) {
-        const checkPassword = await bcrypt.compare(password, user.password);
-        if (checkPassword) {
-          if (checkPassword) {
-          const token = jwt.sign({ user }, secret_key, { expiresIn: "1d" });
-          res.cookie("token", token, {
-            httpOnly: true,
-            secure: true, // Ensure it's secure in production (HTTPS)
-            sameSite: process.env.NODE_ENV === "production" ? "None" : "Strict", // SameSite=None for cross-site requests
-            path: "/",
-            maxAge: 24 * 60 * 60 * 1000,
-          });
-          
-            return res.status(200).json({ message: "Login successful", token });
-          }
-          
-        } else {
-          return res.status(401).json({ sucess: false, message:"Invalid Password"});
+    // Validate email format
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({
+        error: "Please enter a valid email address",
+        fieldErrors: {
+          email: "Invalid email format"
         }
-      } else {
-        return res.status(401).json({ sucess: false, message:"That User Not Exists"});
-      }
+      });
     }
+
+    // Validate password length
+    if (password.length < 6) {
+      return res.status(400).json({
+        error: "Password must be at least 6 characters",
+        fieldErrors: {
+          password: "Password too short"
+        }
+      });
+    }
+
+    // Find user by email
+    const user = await userSchema.findOne({ email });
+    if (!user) {
+      return res.status(401).json({
+        error: "Invalid email or password"
+      });
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        error: "Invalid email or password"
+      });
+    }
+
+    // Create JWT token
+    const token = jwt.sign(
+      { userId: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // Set HTTP-only cookie
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: "/"
+    });
+
+    // Return success response
+    return res.status(200).json({
+      message: "Login successful",
+      user: {
+        id: user._id,
+        email: user.email
+        // Add other non-sensitive user data as needed
+      }
+    });
+
   } catch (error) {
-    return res.status(400).json({ sucess: false, message: "server error" });
+    console.error("Login error:", error);
+    return res.status(500).json({ 
+      error: "Login failed. Please try again." 
+    });
   }
 };
 
@@ -187,9 +238,25 @@ export const verifyEmail = async(req, res) => {
   }
 }
 
-export const getUserData = (req , res) => {
-  const user = req.user
-  return res.json({user});
-}
+export const getUserData = async (req, res) => {
+  try {
+    const { userId } = req.body;
+     // Verify that the requested userId matches the token's userId
+   
+
+    const user = await userSchema.findOne({ _id: userId }).select('-password');
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    res.status(200).json({ success: true, userData: user });
+  } catch (error) {
+    console.error("Error fetching user data:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+
 
 
